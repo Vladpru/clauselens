@@ -1,0 +1,8 @@
+CLAUDE.md
+.env
+data/
+*.db
+.venv/
+node_modules/
+.next/
+__pycache__/

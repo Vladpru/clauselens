@@ -1,0 +1,57 @@
+version: 1
+stance: "We are a commercial party reviewing a third-party agreement."
+clauses:
+  - id: governing_law
+    cuad_label: "Governing Law"
+    title: "Governing law"
+    query_terms: ["governing law", "governed by", "construed in accordance with", "laws of", "choice of law", "applicable law", "jurisdiction"]
+    requirement: "Governing law must be England and Wales, or an EU member state."
+    acceptable: ["England and Wales", "Scotland", "any EU member state"]
+    red_flags: ["law of a jurisdiction outside UK/EU without our approval"]
+    preferred_wording: "This Agreement is governed by the laws of England and Wales."
+    severity_if_missing: medium
+    absence_is: missing
+
+  - id: termination_for_convenience
+    cuad_label: "Termination For Convenience"
+    title: "Termination for convenience"
+    query_terms: ["terminate for convenience", "without cause", "for any reason", "terminate this agreement at any time", "upon written notice"]
+    requirement: "If termination for convenience exists, it must be available to both parties and need at least 30 days' written notice."
+    acceptable: ["mutual right with 30 or more days' notice", "no termination for convenience for either party"]
+    red_flags: ["only the counterparty may terminate for convenience", "notice period under 30 days", "termination with immediate effect and no notice"]
+    preferred_wording: "Either party may terminate this Agreement for convenience by giving the other party not less than thirty (30) days' prior written notice."
+    severity_if_missing: low
+    absence_is: ok
+
+  - id: cap_on_liability
+    cuad_label: "Cap On Liability"
+    title: "Cap on liability"
+    query_terms: ["limitation of liability", "aggregate liability", "shall not exceed", "in no event shall", "liable for"]
+    requirement: "Liability must be capped for both parties, at no less than the fees paid or payable in the 12 months before the claim, with carve-outs for fraud, wilful misconduct, and death or personal injury caused by negligence."
+    acceptable: ["mutual cap at or above 12 months' fees", "mutual cap at a fixed amount we approve"]
+    red_flags: ["cap protects only the counterparty", "cap below 12 months' fees", "no carve-out for fraud or wilful misconduct"]
+    preferred_wording: "Except for liability for fraud, wilful misconduct, or death or personal injury caused by negligence, each party's total aggregate liability arising out of or in connection with this Agreement shall not exceed the total fees paid or payable under this Agreement in the twelve (12) months preceding the event giving rise to the claim."
+    severity_if_missing: high
+    absence_is: missing
+
+  - id: non_compete
+    cuad_label: "Non-Compete"
+    title: "Non-compete"
+    query_terms: ["non-compete", "shall not compete", "competing products", "competitive business", "directly or indirectly engage"]
+    requirement: "We must not accept a non-compete. If one exists, it must be limited to the subject matter of this Agreement, to a defined territory, and to the term plus at most 12 months."
+    acceptable: ["no non-compete binding on us", "narrow non-compete limited in scope, territory, and time"]
+    red_flags: ["non-compete binding on us with no end date", "worldwide scope", "covers products or services outside this Agreement"]
+    preferred_wording: "Any restriction on competition under this Agreement applies only to the products and services supplied under this Agreement, only within the Territory, and ends twelve (12) months after this Agreement terminates or expires."
+    severity_if_missing: low
+    absence_is: ok
+
+  - id: anti_assignment
+    cuad_label: "Anti-Assignment"
+    title: "Anti-assignment"
+    query_terms: ["assign", "assignment", "transfer this agreement", "prior written consent", "change of control"]
+    requirement: "Assignment must need the other party's prior written consent, not unreasonably withheld, for both parties. We must be able to assign without consent to an affiliate or to a successor in a merger or sale of substantially all assets."
+    acceptable: ["mutual consent requirement with affiliate and successor carve-out"]
+    red_flags: ["counterparty may assign freely while we need consent", "consent at the counterparty's sole discretion", "change of control of us counts as assignment"]
+    preferred_wording: "Neither party may assign or transfer this Agreement without the prior written consent of the other party, such consent not to be unreasonably withheld, except that either party may assign this Agreement without consent to an affiliate or to a successor in connection with a merger, acquisition, or sale of all or substantially all of its assets."
+    severity_if_missing: medium
+    absence_is: missing

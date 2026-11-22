@@ -1,0 +1,80 @@
+{
+  "version": "mini",
+  "data": [
+    {
+      "title": "ALPHA_AGREEMENT",
+      "paragraphs": [
+        {
+          "qas": [
+            {
+              "answers": [
+                {
+                  "text": "This Agreement is governed by the laws of Delaware.",
+                  "answer_start": 0
+                }
+              ],
+              "id": "ALPHA_AGREEMENT__Governing Law",
+              "question": "Highlight the parts (if any) of this contract related to \"Governing Law\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": false
+            },
+            {
+              "answers": [],
+              "id": "ALPHA_AGREEMENT__Non-Compete",
+              "question": "Highlight the parts (if any) of this contract related to \"Non-Compete\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": true
+            },
+            {
+              "answers": [
+                {
+                  "text": "   ",
+                  "answer_start": 0
+                }
+              ],
+              "id": "ALPHA_AGREEMENT__Cap On Liability",
+              "question": "Highlight the parts (if any) of this contract related to \"Cap On Liability\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": false
+            },
+            {
+              "answers": [
+                {
+                  "text": "Neither party may assign this Agreement.",
+                  "answer_start": 0
+                },
+                {
+                  "text": "Any attempted assignment is void.",
+                  "answer_start": 0
+                }
+              ],
+              "id": "ALPHA_AGREEMENT__Anti-Assignment",
+              "question": "Highlight the parts (if any) of this contract related to \"Anti-Assignment\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": false
+            }
+          ],
+          "context": "Synthetic made-up contract text."
+        }
+      ]
+    },
+    {
+      "title": "BETA_AGREEMENT",
+      "paragraphs": [
+        {
+          "qas": [
+            {
+              "answers": [],
+              "id": "BETA_AGREEMENT__Governing Law",
+              "question": "Highlight the parts (if any) of this contract related to \"Governing Law\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": true
+            },
+            {
+              "answers": [],
+              "id": "BETA_AGREEMENT__Termination For Convenience",
+              "question": "Highlight the parts (if any) of this contract related to \"Termination For Convenience\" that should be reviewed by a lawyer. Details: synthetic",
+              "is_impossible": true
+            }
+          ],
+          "context": "Synthetic made-up contract text."
+        }
+      ]
+    }
+  ]
+}
