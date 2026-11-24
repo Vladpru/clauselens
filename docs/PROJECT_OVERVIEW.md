@@ -51,7 +51,7 @@ What this means for how you work:
 
 - LLM access only through LangChain (`ChatOpenRouter`), provider OpenRouter, model `nvidia/nemotron-3-ultra-550b-a55b:free` (name comes from config, never hard-coded).
 - Orchestration with LangGraph. Checkpointer: PostgreSQL.
-- Backend: Python 3.15 (fallback 3.14 if dependencies fail, see spike S4), FastAPI, SQLModel, PyMuPDF.
+- Backend: Python 3.14 (3.15 failed spike S4: `onnxruntime` has no `cp315` wheels), FastAPI, SQLModel, PyMuPDF.
 - Data: PostgreSQL 16 for app data and checkpoints, Qdrant for vectors, both in Docker.
 - Frontend: Next.js, TypeScript, Tailwind, shadcn/ui, TanStack Query, react-pdf.
 - MVP is local only. No deploy, no auth, no OCR, no more than 5 clauses.
@@ -62,7 +62,7 @@ The full list with reasons is in the spec, sections 3 and 6.
 
 The spec defines phases. Work one phase at a time and stop at the phase's exit criteria.
 
-- **Phase 0:** foundations and spikes (repo init, model smoke test, CUAD inspection, PDF parsing, dependency check on Python 3.15, Qdrant hybrid search, playbook draft).
+- **Phase 0:** foundations and spikes (repo init, model smoke test, CUAD inspection, PDF parsing, dependency check on Python 3.15 that fell back to 3.14, Qdrant hybrid search, playbook draft). Done; results in the spec appendix.
 - **Phase 1:** the MVP (backend, frontend, eval CLI). Acceptance criteria AC-1 to AC-13 in the spec.
 - **Phase 2 and later:** quality, deeper evals, observability. Do not start these unless asked.
 

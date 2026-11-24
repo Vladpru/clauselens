@@ -1,7 +1,7 @@
 # Contract Review Agent: MVP design (Spec-Driven Development)
 
-Status: DRAFT, awaiting approval. No code exists yet. Nothing is built until this is approved.
-Date: 2026-11-22 (revised the same day: Python 3.14 after S4, PostgreSQL, Qdrant)
+Status: APPROVED by the owner on 2026-11-22. Phase 0 is complete (results in the appendix). Phase 1 is next.
+Date: 2026-11-22 (revised the same day: Python 3.14 after S4, PostgreSQL, Qdrant). Revised 2026-11-23: LangSmith tracing moved from Phase 3 into Phase 1 (G8, section 6.7, AC-14).
 Owner: Vlad
 
 ---
@@ -32,6 +32,7 @@ The app should be "simple but must work" in the MVP, and then be iterated in pha
 - G5. The lawyer can accept, edit, or reject each suggestion, and the decision persists.
 - G6. A CLI eval harness scores the pipeline against CUAD labels and writes a reproducible markdown report.
 - G7. LangChain is the only way the code talks to the LLM, and the pipeline is a compiled LangGraph.
+- G8. The owner can see in LangSmith which prompts, models, and graph steps ran for a run, with their inputs, outputs, tokens, latency, and errors. Tracing is opt-in (section 6.7).
 
 ### Non-goals (MVP)
 - Deploy, hosting, CI/CD, containerizing the app itself (local only). Docker is used only to run PostgreSQL and Qdrant locally.
@@ -49,6 +50,7 @@ The app should be "simple but must work" in the MVP, and then be iterated in pha
 - Gold labels leaking into the pipeline, which would make eval numbers meaningless.
 - Calling the LLM without LangChain, or orchestrating with ad-hoc loops instead of LangGraph.
 - Real or confidential contracts sent to a free model endpoint (see section 7).
+- Contract text sent to a tracing service without the owner turning tracing on. Traces hold full prompts, so tracing is off by default (section 6.7).
 - Presenting output as legal advice.
 
 ## 3. Hard constraints (decided by the owner)
@@ -124,10 +126,10 @@ One page, local, no login.
    - **Right:** one card per clause (5 cards):
      - status badge: `OK`, `Risky`, `Missing`, `Uncertain`
      - clause name and the playbook rule it was checked against
-     - the verbatim quote and page number (not shown for `missing`)
+     - the verbatim quote and page number (not shown when the clause was not found)
      - the issues found and a short rationale
      - for `risky` and `missing`: suggested wording
-     - for `missing`: the list of sections that were examined
+     - when the clause was not found (`missing`, or `ok` because the playbook says absence is acceptable): the list of sections that were examined
      - **Accept / Edit / Reject** buttons. Edit lets the lawyer change the suggested text before accepting.
    - Clicking a card scrolls the PDF to the quote's page and highlights it when a bounding box is available (page-only highlight otherwise).
 4. Decisions persist (reload the page, state remains).
@@ -185,6 +187,7 @@ Rule: `app/` must not import from `evals/` or read CUAD labels (enforced by a te
 | Embeddings | Local small model, e.g. `BAAI/bge-small-en-v1.5`, preferably through FastEmbed (ONNX) | Avoids spending free-tier LLM quota. ONNX avoids a heavy torch install, which also lowers wheel risk on new Python versions |
 | Vector store | Qdrant (Docker), one collection `contract_chunks`, payload filter by `contract_id` | Owner's choice |
 | App DB | PostgreSQL 16 (Docker) via SQLModel + `psycopg`. `create_all` in the MVP, Alembic in Phase 2 | Owner's choice. Two databases on one server: `contract_review` (app data) and `contract_review_checkpoints` (LangGraph) |
+| Observability | LangSmith, through LangChain's built-in tracing (`LANGSMITH_*` environment variables) | Opt-in and off by default. No tracing code in the nodes. See section 6.7 |
 | Tests | pytest, LangChain fake chat models for graph tests | |
 | Frontend | Next.js (App Router), TypeScript, Tailwind, shadcn/ui, TanStack Query, `react-pdf` | Matches owner's stack |
 | API types | OpenAPI from FastAPI, optionally `openapi-typescript` | Optional |
@@ -223,7 +226,8 @@ Run with `max_concurrency` of 2 (configurable) to stay inside free-tier rate lim
 Status rules:
 - found, verified, compliant -> `ok`
 - found, verified, not compliant -> `risky`
-- not found by the extractor -> `missing`, with severity from the playbook and the examined candidates recorded
+- not found by the extractor, playbook `absence_is: missing` -> `missing`, with severity from the playbook and the examined candidates recorded
+- not found by the extractor, playbook `absence_is: ok` -> `ok` (absence is acceptable under our stance), with the examined candidates recorded and no suggestion
 - extractor claims found but quote fails verification twice -> `uncertain`
 - LLM error after retries (429, timeout, parse failure) -> `uncertain` with `error` reason. The run continues and ends `completed_with_errors`. It must not crash.
 
@@ -233,10 +237,10 @@ MVP "missing" proof is deliberately weak: one retrieval pass, top-k candidates r
 
 - `Contract(id, filename, path, page_count, uploaded_at)`
 - `Run(id, contract_id, status[queued|running|completed|completed_with_errors|failed], started_at, finished_at, model, playbook_hash)`
-- `Finding(id, run_id, clause_id, status, severity, quote, page, bboxes_json, candidates_json, playbook_rule, issues_json, rationale, suggestion_text, suggestion_explanation, error)`
+- `Finding(id, run_id, clause_id, status, severity, quote, page, bboxes_json, candidates_json, playbook_rule, issues_json, rationale, suggestion_text, suggestion_explanation, error, verify_failures)` (`verify_failures` is an int from 0 to 2: how many times the extracted quote failed verification. Eval metric 3 reads it.)
 - `Decision(finding_id PK, state[pending|accepted|edited|rejected], edited_text, decided_at)`
 
-Parsed page text lives under `data/contracts/{id}/pages.json` (the `verify` node reads it). Chunk vectors and sparse vectors live in the Qdrant collection `contract_chunks`, each point carrying `contract_id`, `page`, and `chunk_id` in its payload.
+Parsed page text lives under `data/contracts/{id}/pages.json` (the `verify` node reads it). Chunk vectors and sparse vectors live in the Qdrant collection `contract_chunks`, each point carrying `contract_id`, `page`, and `chunk_id` in its payload. With `langchain-qdrant` these sit under the `metadata` payload key (`metadata.contract_id`, confirmed in S5), so filters use that key.
 
 ### 6.5 API
 
@@ -246,7 +250,7 @@ Parsed page text lives under `data/contracts/{id}/pages.json` (the `verify` node
 | GET | `/api/contracts/{id}/pdf` | Serves the original PDF |
 | POST | `/api/contracts/{id}/analyze` | Starts a run (background task). Returns `{run_id}` |
 | GET | `/api/runs/{run_id}` | Run status, per-clause step progress, findings when done |
-| PUT | `/api/findings/{id}/decision` | Body `{state, edited_text?}` |
+| PUT | `/api/findings/{id}/decision` | Body `{state, edited_text?}`. Returns 422 for a finding without suggested wording |
 
 Limits: PDF only, at most 20 MB and 100 pages, must contain a text layer.
 
@@ -265,9 +269,27 @@ clauses:
     red_flags: ["law of a jurisdiction outside UK/EU without our approval"]
     preferred_wording: "This Agreement is governed by the laws of England and Wales."
     severity_if_missing: medium          # low | medium | high
+    absence_is: missing                  # ok | missing: what a not-found clause means under our stance
 ```
 
 MVP clauses (5), my pick, owner can swap: Governing Law, Termination For Convenience, Cap On Liability, Non-Compete, Anti-Assignment. The exact CUAD label strings are confirmed in Phase 0.
+
+### 6.7 Observability (LangSmith)
+
+LangChain and LangGraph send traces to LangSmith when tracing is on, so the nodes need no tracing code. `app/tracing.py` reads the settings and sets the `LANGSMITH_*` process environment, because the SDK reads the environment and not `.env`.
+
+| Setting | Meaning |
+|---|---|
+| `LANGSMITH_TRACING` | `true` turns tracing on. Default `false` |
+| `LANGSMITH_API_KEY` | Required for tracing. With the flag on and no key, tracing stays off |
+| `LANGSMITH_PROJECT` | Project name. Default `clauselens` |
+| `LANGSMITH_ENDPOINT` | Optional, for a regional or self-hosted endpoint |
+
+- `app.tracing.configure_tracing(settings)` runs in `build_services`, so the API and the eval CLI behave the same. The settings override any `LANGSMITH_*` or `LANGCHAIN_*` variable set in the shell.
+- One trace per run. It shows the parent graph, one child per clause subgraph, one span per node, and each LLM call with its prompt, tool call, tokens, latency, and error.
+- Each trace is named `review <first 8 characters of the run id>` and tagged `clauselens`. Eval runs add the tag `eval`. Metadata: `run_id`, `contract_id`, `model` (the configured primary), `playbook_hash`. Metadata and tags are not part of any prompt, so the LLM cache is unaffected.
+- Privacy: a trace holds the full prompts, so contract text goes to LangSmith. Use tracing only with public CUAD contracts (C4), and the README says so. Tracing off sends nothing, and the app works without a LangSmith account.
+- Not traced: PDF parsing, chunking, embeddings, retrieval, and verification run as plain code. Their results show up as inputs and outputs of the nodes that call them.
 
 ## 7. Model facts, risks, mitigations
 
@@ -279,11 +301,12 @@ Facts checked on 2026-11-22 (OpenRouter listing pages):
 
 | Risk | Mitigation |
 |---|---|
-| Free-tier rate limits or daily cap break eval runs | `max_concurrency=2`, exponential backoff, LangChain `SQLiteCache` (a local cache file, separate from the app database) for dev and eval so repeated runs are free, small default eval size (10 contracts), full run (20) only occasionally |
+| Free-tier rate limits or daily cap break eval runs | `max_concurrency=2`, exponential backoff, LangChain `SQLiteCache` from `langchain-community` (a local cache file, separate from the app database) for dev and eval so repeated runs are free, small default eval size (10 contracts), full run (20) only occasionally |
 | Function-calling output unreliable | Pydantic validation plus one retry with the validation error fed back. Fallback: JSON-in-prompt plus `PydanticOutputParser`. Decision point in Phase 0 |
 | Reasoning text pollutes the answer | Parse only the structured tool call, ignore reasoning fields. Confirm in S1 |
 | Quote hallucination | `verify` node (anti-goal enforced in code and tested) |
 | Prompts logged by provider | Only public CUAD contracts. A README warning: never upload real contracts to this setup |
+| Traces hold full contract text and prompts and go to LangSmith cloud | Tracing is off by default and needs a key. Only public CUAD contracts (C4). README warning. The owner can use a self-hosted or regional `LANGSMITH_ENDPOINT` |
 | PDF bbox search fails on multi-line or hyphenated text | Page number is mandatory, bbox best-effort with word-level fallback, page-level highlight otherwise |
 | CUAD txt vs PDF text mismatch breaks gold matching | Match by normalized token overlap, never by offsets |
 | The model may be renamed or removed from the free tier | Model id is config. Swapping to another OpenRouter model is a one-line change |
@@ -299,11 +322,13 @@ CLI: `uv run python -m evals.run --n 10 --seed 42` (default 10, full run 20).
 **Sample:** deterministic sample of N CUAD contracts by seed, with the requirement that for each of the 5 clauses the sample has at least one present and one absent case when the data allows it (report if it does not).
 
 **Metrics:**
-1. **Presence P/R/F1 per clause:** gold present vs pipeline found (`ok` or `risky` counts as found).
+1. **Presence P/R/F1 per clause:** gold present vs pipeline found. Found means the finding carries a verified quote (`ok` or `risky` with a quote). An `ok` finding without a quote (absence accepted by the playbook) counts as not found.
 2. **Span match rate:** among true-positives, share where the extracted quote overlaps the gold span (normalized token F1 of at least 0.5, threshold is a documented constant).
 3. **Verification rejection rate:** how often the LLM's first quote failed verification (a hallucination proxy).
 4. **Uncertain/error rate.**
 5. **Cost proxies:** LLM calls and wall-clock per contract.
+
+Diagnostic metric (no LLM calls): **Retrieval hit rate.** Among gold-present clauses, the share where any candidate page contains a gold span. It separates retrieval misses from extraction misses.
 
 **Output:** `backend/evals/results/YYYY-MM-DD-HHMM.md` containing the config (model, seed, n, playbook hash, git commit) and the tables. No pass/fail threshold in the MVP. The first run is the baseline to beat in Phase 2.
 
@@ -319,8 +344,8 @@ Each is observable and has a verification step.
 | AC-2 | Analyze returns exactly 5 findings, one per playbook clause, each with a status in `ok/risky/missing/uncertain` | Graph integration test with fake LLM |
 | AC-3 | Every displayed quote is a normalized substring of the cited page's text. No unverified quote is ever returned as a citation | Unit tests for `verify` + property check in the integration test |
 | AC-4 | Clicking a card scrolls the PDF to the cited page. When bboxes exist, the quote is highlighted | Manual check |
-| AC-5 | A `missing` finding includes the list of examined candidates (pages/snippets) | Integration test |
-| AC-6 | `risky` and `missing` findings carry suggested wording. `ok` findings do not | Integration test |
+| AC-5 | A finding for a clause that was not found (`missing`, or `ok` with `absence_is: ok`) includes the list of examined candidates (pages/snippets) | Integration test |
+| AC-6 | `risky` and `missing` findings carry suggested wording. `ok` findings do not, including `ok` findings for a clause that is absent with `absence_is: ok` | Integration test |
 | AC-7 | Accept/Edit/Reject persists across a page reload | API test + manual |
 | AC-8 | All model calls go through a LangChain chat model built in `app/llm.py`. The pipeline is a compiled LangGraph with a Postgres checkpointer | Grep gate in a test (no direct HTTP client to openrouter, no `openai` import) + code review |
 | AC-9 | `python -m evals.run --n 10 --seed 42` produces the markdown report with all metrics in section 8, and the same seed selects the same contracts | Run twice, compare sample list |
@@ -328,8 +353,9 @@ Each is observable and has a verification step.
 | AC-11 | Runs locally from a fresh clone with `.env` from `.env.example` and `docker compose up -d` (Postgres + Qdrant). No secret is committed | Manual + `git ls-files` check |
 | AC-12 | A 429/timeout/parse error on one clause yields `uncertain` with an error reason for that clause. The run still finishes | Integration test with a failing fake model |
 | AC-13 | Unit tests cover normalization, verify, playbook validation, gold parsing. The graph is tested with a fake chat model (no network) | `uv run pytest` green |
+| AC-14 | With `LANGSMITH_TRACING=true` and a key, a run produces one LangSmith trace with a child span per graph node and per LLM call, tagged and annotated as in section 6.7. With tracing off, or on without a key, nothing is sent and every other AC still holds | Unit tests for `configure_tracing` and run metadata, a local fake-endpoint check, and a manual look at the trace in LangSmith |
 
-Negative requirements: no auth, no deploy files, no OCR, no export, no more than 5 clauses in the MVP, the UI never shows CUAD gold labels.
+Negative requirements: no auth, no deploy files, no OCR, no export, no more than 5 clauses in the MVP, the UI never shows CUAD gold labels, tracing is never on unless the owner sets the flag and a key.
 
 ## 10. Phases
 
@@ -347,8 +373,8 @@ Init repo, env, deps, CUAD download, and the risky unknowns:
 Exit: S1 to S5 results recorded in the spec appendix. If S1 fails, decide the fallback (JSON-in-prompt parser or another OpenRouter model) before Phase 1. If S4 fails on 3.15, drop to 3.14 before Phase 1 (done).
 
 ### Phase 1: MVP (this spec)
-Backend ingest, graph, API, tests. Frontend review screen. Eval CLI baseline.
-Exit: all AC-1 to AC-13 pass, first eval report committed.
+Backend ingest, graph, API, tests. Frontend review screen. Eval CLI baseline. LangSmith tracing (opt-in, section 6.7).
+Exit: all AC-1 to AC-14 pass, first eval report committed.
 
 ### Phase 2: Quality and evals
 - Exhaustive "missing" proof (second retrieval pass and a full-document scan fallback).
@@ -359,8 +385,8 @@ Exit: all AC-1 to AC-13 pass, first eval report committed.
 - Alembic migrations for Postgres (the MVP uses `create_all`).
 - LangGraph human-in-the-loop `interrupt`: the lawyer's edit feedback triggers a redraft node.
 
-### Phase 3: Observability and robustness
-- Tracing (LangSmith or Langfuse), prompt versioning, regression evals runnable in CI, model comparison through OpenRouter (free vs cheap paid), SSE streaming of progress.
+### Phase 3: Robustness
+- Prompt versioning, regression evals runnable in CI, model comparison through OpenRouter (free vs cheap paid), SSE streaming of progress.
 
 ### Phase 4: Product polish (optional, later)
 - EU/UK playbook content, additional file formats, auth, deploy.
@@ -410,6 +436,9 @@ DATA_DIR=./data
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/contract_review
 CHECKPOINT_DB_URL=postgresql://postgres:postgres@localhost:5434/contract_review_checkpoints?sslmode=disable
 QDRANT_URL=http://localhost:6333
+LANGSMITH_TRACING=false
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=clauselens
 ```
 
 `docker-compose.yml` (local dev only, throwaway credentials):
@@ -495,8 +524,15 @@ Dev commands (once code exists): `docker compose up -d`, `uv run uvicorn app.mai
 - [ ] Markdown report writer with config header
 - [ ] First baseline report committed
 
+### E2. Phase 1 observability (LangSmith)
+- [ ] `app/tracing.py` sets `LANGSMITH_*` from settings; off by default; flag without key stays off
+- [ ] Run metadata and tags (`run_id`, `contract_id`, `model`, `playbook_hash`, `clauselens`, `eval`) set in `execute_run`
+- [ ] Local fake-endpoint check shows a trace tree is sent when tracing is on, and nothing when off
+- [ ] Owner adds a LangSmith key and looks at one real trace (graph, nodes, LLM calls)
+- [ ] README warning: tracing sends contract text to LangSmith, public CUAD contracts only
+
 ### F. Exit
-- [ ] AC-1 to AC-13 checked one by one
+- [ ] AC-1 to AC-14 checked one by one
 - [ ] Demo run on 2 contracts recorded (screenshots)
 - [ ] Phase 2 backlog written from what the baseline showed
 
@@ -516,6 +552,7 @@ Dev commands (once code exists): `docker compose up -d`, `uv run uvicorn app.mai
 12. Two Postgres databases (app data, LangGraph checkpoints) on one server.
 13. One Qdrant collection filtered by `contract_id`, not one collection per contract.
 14. `create_all` for tables in the MVP, Alembic in Phase 2.
+15. LangSmith (not Langfuse) for tracing, in Phase 1 instead of Phase 3 (owner's request, 2026-11-23). Opt-in through environment variables, so the default setup sends nothing off the machine.
 
 ## 14. Left to the builder
 

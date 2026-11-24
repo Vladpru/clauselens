@@ -18,8 +18,10 @@ Spec: `docs/specs/2026-11-22-contract-review-mvp-design.md`. Read it fully befor
 
 ## Current state
 
-- No code yet. `git init` is done (spec section 11, step 1). Nothing else from section 11 has been run.
-- Spec status is DRAFT. Writing plans is allowed. Executing a phase needs the owner's approval of the spec first.
+- Spec approved by the owner on 2026-11-22.
+- Phase 0 is complete: repo, env, dependencies, Docker, frontend scaffold, gold parser (`backend/evals/cuad.py`), playbook draft, spikes S1 to S5 (results in the spec appendix, scripts in `backend/spikes/`).
+- Python is 3.14 (3.15 failed S4). Postgres runs on host port 5434.
+- Next: Phase 1, planned in `docs/plans/phase-1.md`. Executing it needs the owner's approval of that plan.
 - `~/Code/contract-review-agent/` is an old copy of the spec. Ignore it. This repo is the only working copy.
 
 ## Plans
